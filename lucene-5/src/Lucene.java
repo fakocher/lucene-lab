@@ -30,11 +30,18 @@ public class Lucene
 	public static void main(String[] args) throws IOException, ParseException
 	{
 		// Get file path from first argument
-		if (args[0] == null)
+		if (args.length < 1)
 		{
 			System.out.println("Missing first argument. Provide a file path.");
+			return;
+		}
+		if (args.length < 2)
+		{
+			System.out.println("Missing second argument. Provide a query.");
+			return;
 		}
 		String filePath = args[0];
+		String queryString = args[1];
 		
 		// Create an analyser
 		Analyzer analyzer = new StandardAnalyzer();  
@@ -113,7 +120,7 @@ public class Lucene
 		QueryParser parser = new QueryParser("summary", analyzer);
 		
 		// 2.2. parse query
-		Query query = parser.parse("simultaneous");
+		Query query = parser.parse(queryString);
 
 		// 3.1. create index reader
 		IndexReader indexReader = DirectoryReader.open(indexDir);
