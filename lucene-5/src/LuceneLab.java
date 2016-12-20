@@ -2,9 +2,11 @@ import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
+import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
@@ -41,7 +43,7 @@ public class LuceneLab
 		String filePath = args[0];
 		String queryString = args[1];
 		
-		// Create an analyser
+		// Create an analyzer
 		Analyzer analyzer = new StandardAnalyzer();  
 		
 		// 1.2. create an index writer configuration
@@ -77,7 +79,14 @@ public class LuceneLab
 			IntField idField = new IntField("id", id, Field.Store.YES);
 			doc.add(idField);
 			
-			// Create a field for each author
+			// Create a tokenized field type
+			FieldType tokenizedFieldType = new FieldType();
+			tokenizedFieldType.setIndexOptions(IndexOptions.DOCS); // controls how much information is stored in the postings lists.
+			tokenizedFieldType.setTokenized(true); // tokenize the field's contents using configured analyzer
+			tokenizedFieldType.setStoreTermVectors(true); // Store term vectors
+			tokenizedFieldType.freeze(); // prevents future changes
+			
+			// Create a string field for each author
 			String[] authors = fields[1].split(";");
 			StringField[] authorFields = new StringField[authors.length];
 			for (int i = 0; i < authors.length; i++)
@@ -92,7 +101,7 @@ public class LuceneLab
 				doc.add(authorField);
 			}
 			
-			// Create a title field
+			// Create a string title field
 			String title = fields[2];
 			StringField titleField = new StringField("title", title, Field.Store.YES);
 			doc.add(titleField);
@@ -101,7 +110,7 @@ public class LuceneLab
 			if (fields.length > 3)
 			{
 				String summary = fields[3];
-				StringField summaryField = new StringField("summary", summary, Field.Store.YES);
+				Field summaryField = new Field("summary", summary, tokenizedFieldType);
 				doc.add(summaryField);
 			}
 			
