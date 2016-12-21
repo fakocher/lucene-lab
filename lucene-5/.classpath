@@ -6,6 +6,5 @@
 	<classpathentry kind="lib" path="lib/lucene-core-5.2.1.jar"/>
 	<classpathentry kind="lib" path="lib/lucene-demo-5.2.1.jar"/>
 	<classpathentry kind="lib" path="lib/lucene-queryparser-5.2.1.jar"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jre1.7"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
