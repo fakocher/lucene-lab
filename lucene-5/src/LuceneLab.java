@@ -34,6 +34,10 @@ import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
 import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
+import org.apache.lucene.misc.HighFreqTerms;
+import org.apache.lucene.misc.HighFreqTerms.DocFreqComparator;
+import org.apache.lucene.misc.HighFreqTerms.TotalTermFreqComparator;
+import org.apache.lucene.misc.TermStats;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
 import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.IndexSearcher;
@@ -52,7 +56,7 @@ import java.nio.file.Path;
 
 public class LuceneLab
 {
-	public static void main(String[] args) throws IOException, ParseException
+	public static void main(String[] args) throws Exception
 	{
 		// Get analyzer from first argument
 		if (args.length < 1)
@@ -106,8 +110,8 @@ public class LuceneLab
 					System.out.println("Missing fourth argument. Provide a common words file path.");
 					return;
 				}
-				File stopWordsFile = new File(args[3]);
-				analyzer = new StopAnalyzer();
+				Path stopWordsPath = FileSystems.getDefault().getPath(args[3]);
+				analyzer = new StopAnalyzer(stopWordsPath);
 				break;
 				
 			case "StandardAnalyzer":
@@ -151,13 +155,10 @@ public class LuceneLab
 			
 			// Create a string field for each author
 			String[] authors = fields[1].split(";");
-			StringField[] authorFields = new StringField[authors.length];
-			for (int i = 0; i < authors.length; i++)
+			StringField[] authorFields = new StringField[authors.length - 1];
+			for (int i = 0; i < authors.length - 1; i++)
 			{
-				if (authors[i] != "")
-				{
-					authorFields[i] = new StringField("author", authors[i], Field.Store.YES);
-				}
+				authorFields[i] = new StringField("author", authors[i], Field.Store.YES);
 			}
 			for (StringField authorField: authorFields)
 			{
@@ -220,6 +221,15 @@ public class LuceneLab
 			Document doc = indexSearcher.doc(hit.doc);
 			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hit.score + ")");
 		}
+		
+		// Look for the author with the highest number of publication
+		DocFreqComparator cmp = new HighFreqTerms.DocFreqComparator();
+		TermStats termStats[] = HighFreqTerms.getHighFreqTerms(indexReader, 1000, "author", cmp);
+		String authorName = termStats[0].termtext.utf8ToString();
+		String numberOfPublications = Integer.toString(termStats[0].docFreq);
+		System.out.println("\n-- INDEX STATS --");
+		System.out.println("\nAuthor with the highest number of publications:");
+		System.out.println(authorName + " with " + numberOfPublications + " publications.");
 		
 		// Close index reader
 		indexReader.close();
