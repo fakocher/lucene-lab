@@ -36,6 +36,8 @@ import org.apache.lucene.misc.HighFreqTerms;
 import org.apache.lucene.misc.HighFreqTerms.DocFreqComparator;
 import org.apache.lucene.misc.TermStats;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
+import org.apache.lucene.queryparser.classic.ParseException;
+import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
@@ -66,7 +68,7 @@ public class LuceneLab
 			
 			return;
 		}
-		LuceneLab.cacmFilePath = args[0];
+		cacmFilePath = args[0];
 
 		// Get common_words.txt path from second argument
 		if (args.length < 2)
@@ -84,7 +86,7 @@ public class LuceneLab
 
 		// Create an index with a standard analyzer
 		StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
-		Path standardIndexPath = LuceneLab.createIndex("indexes/standard", standardAnalyzer);
+		Path standardIndexPath = createIndex("indexes/standard", standardAnalyzer);
 
 		/**
 		 * 5.b Using different Analyzers
@@ -93,23 +95,23 @@ public class LuceneLab
 
 		// Create an index with a whitespace analyzer
 		WhitespaceAnalyzer whitespaceAalyzer = new WhitespaceAnalyzer();
-		Path whitespaceIndexPath = LuceneLab.createIndex("indexes/whitespace", whitespaceAalyzer);
+		Path whitespaceIndexPath = createIndex("indexes/whitespace", whitespaceAalyzer);
 
 		// Create an index with an english analyzer
 		EnglishAnalyzer	englishAnalyzer = new EnglishAnalyzer();
-		Path englishIndexPath = LuceneLab.createIndex("indexes/english", englishAnalyzer);
+		Path englishIndexPath = createIndex("indexes/english", englishAnalyzer);
 
 		// Create an index with a shingle analyzer wrapper, size 2
 		ShingleAnalyzerWrapper shingleAnalyzerWrapper2 = new ShingleAnalyzerWrapper(2, 2);
-		Path shingle2IndexPath = LuceneLab.createIndex("indexes/shingle-2", shingleAnalyzerWrapper2);
+		Path shingle2IndexPath = createIndex("indexes/shingle-2", shingleAnalyzerWrapper2);
 
 		// Create an index with a shingle analyzer wrapper, size 3
 		ShingleAnalyzerWrapper shingleAnalyzerWrapper3 = new ShingleAnalyzerWrapper(3, 3);
-		Path shingle3IndexPath = LuceneLab.createIndex("indexes/shingle-3", shingleAnalyzerWrapper3);
+		Path shingle3IndexPath = createIndex("indexes/shingle-3", shingleAnalyzerWrapper3);
 
 		// Create an index with a stop analyzer, size 3
 		StopAnalyzer stopAnalyzer = new StopAnalyzer(stopWordsPath);
-		Path stopIndexPath = LuceneLab.createIndex("indexes/stop", stopAnalyzer);
+		Path stopIndexPath = createIndex("indexes/stop", stopAnalyzer);
 		
 		/**
 		 * 5.c Reading Index
@@ -147,28 +149,22 @@ public class LuceneLab
 		 */
 
 		// Create query parser
-		String fieldNames[] = {"author", "title", "summary"};
-		MultiFieldQueryParser parser = new MultiFieldQueryParser(fieldNames, standardAnalyzer);
-		
-		// Parse query
-		Query query = parser.parse("test");
+		String fieldNames[] = {"title", "summary"};
+		MultiFieldQueryParser parser = new MultiFieldQueryParser(fieldNames, englishAnalyzer);
 
 		// Create index reader
-		indexDir = FSDirectory.open(standardIndexPath);
+		indexDir = FSDirectory.open(englishIndexPath);
 		indexReader = DirectoryReader.open(indexDir);
 		
 		// Create index searcher
 		IndexSearcher indexSearcher = new IndexSearcher(indexReader);
 		
-		// Search query
-		ScoreDoc[] hits = indexSearcher.search(query, 1000).scoreDocs;
-		
-		// Retrieve results
-		System.out.println("\nResults found: " + hits.length);
-		for (ScoreDoc hit: hits) {
-			Document doc = indexSearcher.doc(hit.doc);
-			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hit.score + ")");
-		}
+		// Handle some queries
+		handleQuery("\"Information Retrieval\"", parser, indexSearcher);
+		handleQuery("Information AND Retrieval", parser, indexSearcher);
+		handleQuery("+Retrieval Information NOT Database", parser, indexSearcher);
+		handleQuery("Info*", parser, indexSearcher);
+		handleQuery("\"Information Retrieval\"~5", parser, indexSearcher);
 		
 		// Close index reader
 		indexReader.close();
@@ -181,85 +177,105 @@ public class LuceneLab
 
 	private static Path createIndex(String indexPathName, Analyzer analyzer) throws IOException
 	{
-		// Create an index writer configuration
-		IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
-		
-		// Create and replace existing index
-		iwc.setOpenMode(OpenMode.CREATE);
-		
-		// Not pack newly written segments in a compound file: 
-		// keep all segments of index separately on disk
-		iwc.setUseCompoundFile(false);
-		
-		// Create index writer
+		// Check if index does not already exist
 		Path indexPath = FileSystems.getDefault().getPath(indexPathName);
 		Directory indexDir = FSDirectory.open(indexPath);
-		IndexWriter indexWriter = new IndexWriter(indexDir, iwc);
-		
-		// Create reader to read cacm.txt
-		BufferedReader in = new BufferedReader(new FileReader(LuceneLab.cacmFilePath));
-		
-		// Loop over the text file lines
-		String line;
-		while((line = in.readLine()) != null)
+		if (!DirectoryReader.indexExists(indexDir))
 		{
-			// Create new document
-			Document doc = new Document();
+			// Create an index writer configuration
+			IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
 			
-			// Gather the field values from the file line
-			String[] fields  = line.split("\t");
+			// Create and replace existing index
+			iwc.setOpenMode(OpenMode.CREATE);
 			
-			// Create an ID field
-			int id = Integer.parseInt(fields[0]);
-			IntField idField = new IntField("id", id, Field.Store.YES);
-			doc.add(idField);
+			// Not pack newly written segments in a compound file: 
+			// keep all segments of index separately on disk
+			iwc.setUseCompoundFile(false);
 			
-			// Create a string field for each author
-			String[] authors = fields[1].split(";");
-			StringField[] authorFields = new StringField[authors.length - 1];
-			for (int i = 0; i < authors.length - 1; i++)
+			// Create index writer
+			IndexWriter indexWriter = new IndexWriter(indexDir, iwc);
+			
+			// Create reader to read cacm.txt
+			BufferedReader in = new BufferedReader(new FileReader(cacmFilePath));
+			
+			// Loop over the text file lines
+			String line;
+			while((line = in.readLine()) != null)
 			{
-				authorFields[i] = new StringField("author", authors[i], Field.Store.YES);
+				// Create new document
+				Document doc = new Document();
+				
+				// Gather the field values from the file line
+				String[] fields  = line.split("\t");
+				
+				// Create an ID field
+				int id = Integer.parseInt(fields[0]);
+				IntField idField = new IntField("id", id, Field.Store.YES);
+				doc.add(idField);
+				
+				// Create a string field for each author
+				String[] authors = fields[1].split(";");
+				StringField[] authorFields = new StringField[authors.length - 1];
+				for (int i = 0; i < authors.length - 1; i++)
+				{
+					authorFields[i] = new StringField("author", authors[i], Field.Store.YES);
+				}
+				for (StringField authorField: authorFields)
+				{
+					doc.add(authorField);
+				}
+				
+				// Create a string title field
+				String title = fields[2];
+				FieldType titleFieldType = new FieldType();
+				titleFieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); // Controls how much information is stored in the postings lists.
+				titleFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
+				titleFieldType.setStoreTermVectors(true); // Store term vectors
+				titleFieldType.setStored(true); // Store the field to show it in the results
+				titleFieldType.freeze(); // Prevents future changes
+				Field titleField = new Field("title", title, titleFieldType);
+				doc.add(titleField);
+				
+				// Create a summary field if one exists
+				if (fields.length > 3)
+				{
+					String summary = fields[3];
+					FieldType summaryFieldType = new FieldType();
+					summaryFieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); // Controls how much information is stored in the postings lists.
+					summaryFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
+					summaryFieldType.setStoreTermVectors(true); // Store term vectors
+					summaryFieldType.freeze(); // Prevents future changes
+					Field summaryField = new Field("summary", summary, summaryFieldType);
+					doc.add(summaryField);
+				}
+				
+				// Add document to index
+				indexWriter.addDocument(doc);
 			}
-			for (StringField authorField: authorFields)
-			{
-				doc.add(authorField);
-			}
+	
+			// Close file reader
+			in.close();
 			
-			// Create a string title field
-			String title = fields[2];
-			FieldType titleFieldType = new FieldType();
-			titleFieldType.setIndexOptions(IndexOptions.DOCS); // Controls how much information is stored in the postings lists.
-			titleFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
-			titleFieldType.setStoreTermVectors(true); // Store term vectors
-			titleFieldType.setStored(true); // Store the field to show it in the results
-			titleFieldType.freeze(); // Prevents future changes
-			Field titleField = new Field("title", title, titleFieldType);
-			doc.add(titleField);
-			
-			// Create a summary field if one exists
-			if (fields.length > 3)
-			{
-				String summary = fields[3];
-				FieldType summaryFieldType = new FieldType();
-				summaryFieldType.setIndexOptions(IndexOptions.DOCS); // Controls how much information is stored in the postings lists.
-				summaryFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
-				summaryFieldType.setStoreTermVectors(true); // Store term vectors
-				summaryFieldType.freeze(); // Prevents future changes
-				Field summaryField = new Field("summary", summary, summaryFieldType);
-				doc.add(summaryField);
-			}
-			
-			// Add document to index
-			indexWriter.addDocument(doc);
+			// Close index writer
+			indexWriter.close();
 		}
-
-		// Close file reader
-		in.close();
-		
-		// Close index writer
-		indexWriter.close();
-		
+			
 		return indexPath;
+	}
+	
+	private static void handleQuery(String queryString, QueryParser parser, IndexSearcher indexSearcher) throws IOException, ParseException
+	{
+		// Parse query
+		Query query = parser.parse(queryString);
+		
+		// Search query
+		ScoreDoc[] hits = indexSearcher.search(query, 1000).scoreDocs;
+
+		// Print results
+		System.out.println("\nQuery: `" + queryString + "` (" + hits.length + " result(s))");
+		for (int i = 0; i < 10 && i < hits.length; i++) {
+			Document doc = indexSearcher.doc(hits[i].doc);
+			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hits[i].score + ")");
+		}
 	}
 }
