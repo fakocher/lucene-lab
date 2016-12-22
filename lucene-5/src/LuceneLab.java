@@ -1,21 +1,19 @@
 /**
- * This project explores the possibilities of the Lucene indexing framework.
+ * DataMgmt - Lab 3 - Kim Leng Chhun, Jeremy Mariano
+ * =============================================================================
  * 
- * Parameters:
- * 		<analyzer>         : one of the following analyzers:
- * 			- StandardAnalyzer 	      or sda
- * 			- WhitespaceAnalyzer 	  or wa
- * 			- EnglishAnalyzer 		  or ea
- * 			- ShingleAnalyzerWrapper2 or saw2
- * 			- ShingleAnalyzerWrapper3 or saw3
- * 			- StopAnalyzer 			  or spa
- * 		<file path>        : Path of the text file to index
- * 		<query>            : Query to run on the index
- * 		<common words path>: Only if you use StopAnalyzer
+ * This project explores the possibilities of the Lucene indexing framework.
+ * The code follows the order of the lab exercises.
+ * 
+ * You must provide two parameters :
+ * 		<file path>
+ * 		<common words path>
  * 
  * Example:
- * 		C:\cacm.txt test
+ * 		C:\cacm.txt C:\common_words.txt
  */
+
+
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.StopAnalyzer;
@@ -36,19 +34,15 @@ import org.apache.lucene.index.IndexWriterConfig;
 import org.apache.lucene.index.IndexWriterConfig.OpenMode;
 import org.apache.lucene.misc.HighFreqTerms;
 import org.apache.lucene.misc.HighFreqTerms.DocFreqComparator;
-import org.apache.lucene.misc.HighFreqTerms.TotalTermFreqComparator;
 import org.apache.lucene.misc.TermStats;
 import org.apache.lucene.queryparser.classic.MultiFieldQueryParser;
-import org.apache.lucene.queryparser.classic.ParseException;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
-import org.apache.lucene.util.Version;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.FileSystems;
@@ -56,70 +50,137 @@ import java.nio.file.Path;
 
 public class LuceneLab
 {
+	private static String cacmFilePath;
+	
 	public static void main(String[] args) throws Exception
 	{
-		// Get analyzer from first argument
+		/**
+		 * Getting the arguments
+		 * =====================================================================
+		 */
+		
+		// Get cacm.txt path from first argument
 		if (args.length < 1)
 		{
-			System.out.println("Missing first argument. Provide an analyser.");
-			System.out.println("StandardAnalyzer, WhitespaceAnalyzer, EnglishAnalyzer,");
-			System.out.println("ShingleAnalyzerWrapper2, ShingleAnalyzerWrapper3, StopAnalyzer");
+			System.out.println("Missing first argument. Provide a cacm.txt file path.");
+			
 			return;
 		}
-		String analyzerName = args[0];
-		
-		// Get file path from second argument
+		LuceneLab.cacmFilePath = args[0];
+
+		// Get common_words.txt path from second argument
 		if (args.length < 2)
 		{
-			System.out.println("Missing second argument. Provide a file path.");
+			System.out.println("Missing second argument. Provide a common words file path.");
+			
 			return;
 		}
-		String filePath = args[1];
+		Path stopWordsPath = FileSystems.getDefault().getPath(args[1]);
+		
+		/**
+		 * 5.a Indexing
+		 * =====================================================================
+		 */
 
-		// Get query from third argument
-		if (args.length < 3)
-		{
-			System.out.println("Missing third argument. Provide a query.");
-			return;
-		}
-		String queryString = args[2];
+		// Create an index with a standard analyzer
+		StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
+		Path standardIndexPath = LuceneLab.createIndex("indexes/standard", standardAnalyzer);
 
-		// Create an analyzer
-		Analyzer analyzer;
-		switch (analyzerName)
+		/**
+		 * 5.b Using different Analyzers
+		 * =====================================================================
+		 */
+
+		// Create an index with a whitespace analyzer
+		WhitespaceAnalyzer whitespaceAalyzer = new WhitespaceAnalyzer();
+		Path whitespaceIndexPath = LuceneLab.createIndex("indexes/whitespace", whitespaceAalyzer);
+
+		// Create an index with an english analyzer
+		EnglishAnalyzer	englishAnalyzer = new EnglishAnalyzer();
+		Path englishIndexPath = LuceneLab.createIndex("indexes/english", englishAnalyzer);
+
+		// Create an index with a shingle analyzer wrapper, size 2
+		ShingleAnalyzerWrapper shingleAnalyzerWrapper2 = new ShingleAnalyzerWrapper(2, 2);
+		Path shingle2IndexPath = LuceneLab.createIndex("indexes/shingle-2", shingleAnalyzerWrapper2);
+
+		// Create an index with a shingle analyzer wrapper, size 3
+		ShingleAnalyzerWrapper shingleAnalyzerWrapper3 = new ShingleAnalyzerWrapper(3, 3);
+		Path shingle3IndexPath = LuceneLab.createIndex("indexes/shingle-3", shingleAnalyzerWrapper3);
+
+		// Create an index with a stop analyzer, size 3
+		StopAnalyzer stopAnalyzer = new StopAnalyzer(stopWordsPath);
+		Path stopIndexPath = LuceneLab.createIndex("indexes/stop", stopAnalyzer);
+		
+		/**
+		 * 5.c Reading Index
+		 * =====================================================================
+		 */
+
+		// Create index reader
+		Directory indexDir = FSDirectory.open(standardIndexPath);
+		IndexReader indexReader = DirectoryReader.open(indexDir);
+		
+		// Look for the author with the highest number of publication
+		DocFreqComparator comparator = new HighFreqTerms.DocFreqComparator();
+		TermStats termStats[] = HighFreqTerms.getHighFreqTerms(indexReader, 1, "author", comparator);
+		String authorName = termStats[0].termtext.utf8ToString();
+		String numberOfPublications = Integer.toString(termStats[0].docFreq);
+		System.out.println("Author with the highest number of publications:");
+		System.out.println(authorName + " (" + numberOfPublications + ")");
+		
+		// List the top 10 terms in the title field with their frequency.
+		termStats = HighFreqTerms.getHighFreqTerms(indexReader, 10, "title", comparator);
+		System.out.println("\nTop 10 terms in the title field:");
+		for (TermStats termStatsItem: termStats)
 		{
-			case "WhitespaceAnalyzer":
-				analyzer = new WhitespaceAnalyzer();  
-				break;
-				
-			case "EnglishAnalyzer":
-				analyzer = new EnglishAnalyzer();  
-				break;
-				
-			case "ShingleAnalyzerWrapper2":
-				analyzer = new ShingleAnalyzerWrapper(2, 2);
-				break;
-				
-			case "ShingleAnalyzerWrapper3":
-				analyzer = new ShingleAnalyzerWrapper(3, 3);
-				break;
-				
-			case "StopAnalyzer":
-				if (args.length < 4)
-				{
-					System.out.println("Missing fourth argument. Provide a common words file path.");
-					return;
-				}
-				Path stopWordsPath = FileSystems.getDefault().getPath(args[3]);
-				analyzer = new StopAnalyzer(stopWordsPath);
-				break;
-				
-			case "StandardAnalyzer":
-			default:
-				analyzer = new StandardAnalyzer();  
-				break;
+			String title = termStatsItem.termtext.utf8ToString();
+			String frequency = Integer.toString(termStatsItem.docFreq);
+			System.out.println(title + " (" + frequency + ")");
 		}
 		
+		// Close index reader
+		indexReader.close();
+		
+		/**
+		 * 5.d Searching TODO
+		 * =====================================================================
+		 */
+
+		// Create query parser
+		String fieldNames[] = {"author", "title", "summary"};
+		MultiFieldQueryParser parser = new MultiFieldQueryParser(fieldNames, standardAnalyzer);
+		
+		// Parse query
+		Query query = parser.parse("test");
+
+		// Create index reader
+		indexDir = FSDirectory.open(standardIndexPath);
+		indexReader = DirectoryReader.open(indexDir);
+		
+		// Create index searcher
+		IndexSearcher indexSearcher = new IndexSearcher(indexReader);
+		
+		// Search query
+		ScoreDoc[] hits = indexSearcher.search(query, 1000).scoreDocs;
+		
+		// Retrieve results
+		System.out.println("\nResults found: " + hits.length);
+		for (ScoreDoc hit: hits) {
+			Document doc = indexSearcher.doc(hit.doc);
+			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hit.score + ")");
+		}
+		
+		// Close index reader
+		indexReader.close();
+		
+		/**
+		 * 5.e Tuning the Lucene Score TODO
+		 * =====================================================================
+		 */
+	}
+
+	private static Path createIndex(String indexPathName, Analyzer analyzer) throws IOException
+	{
 		// Create an index writer configuration
 		IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
 		
@@ -131,12 +192,12 @@ public class LuceneLab
 		iwc.setUseCompoundFile(false);
 		
 		// Create index writer
-		Path indexPath = FileSystems.getDefault().getPath("index");
+		Path indexPath = FileSystems.getDefault().getPath(indexPathName);
 		Directory indexDir = FSDirectory.open(indexPath);
 		IndexWriter indexWriter = new IndexWriter(indexDir, iwc);
 		
 		// Create reader to read cacm.txt
-		BufferedReader in = new BufferedReader(new FileReader(filePath));
+		BufferedReader in = new BufferedReader(new FileReader(LuceneLab.cacmFilePath));
 		
 		// Loop over the text file lines
 		String line;
@@ -198,41 +259,7 @@ public class LuceneLab
 		
 		// Close index writer
 		indexWriter.close();
-
-		// Create query parser
-		String fieldNames[] = {"author", "title", "summary"};
-		MultiFieldQueryParser parser = new MultiFieldQueryParser(fieldNames, analyzer);
 		
-		// Parse query
-		Query query = parser.parse(queryString);
-
-		// Create index reader
-		IndexReader indexReader = DirectoryReader.open(indexDir);
-		
-		// Create index searcher
-		IndexSearcher indexSearcher = new IndexSearcher(indexReader);
-		
-		// Search query
-		ScoreDoc[] hits = indexSearcher.search(query, 1000).scoreDocs;
-		
-		// Retrieve results
-		System.out.println("Results found: " + hits.length);
-		for (ScoreDoc hit: hits) {
-			Document doc = indexSearcher.doc(hit.doc);
-			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hit.score + ")");
-		}
-		
-		// Look for the author with the highest number of publication
-		DocFreqComparator cmp = new HighFreqTerms.DocFreqComparator();
-		TermStats termStats[] = HighFreqTerms.getHighFreqTerms(indexReader, 1000, "author", cmp);
-		String authorName = termStats[0].termtext.utf8ToString();
-		String numberOfPublications = Integer.toString(termStats[0].docFreq);
-		System.out.println("\n-- INDEX STATS --");
-		System.out.println("\nAuthor with the highest number of publications:");
-		System.out.println(authorName + " with " + numberOfPublications + " publications.");
-		
-		// Close index reader
-		indexReader.close();
-		indexDir.close();
+		return indexPath;
 	}
 }
