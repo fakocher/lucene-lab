@@ -27,6 +27,7 @@ import org.apache.lucene.document.FieldType;
 import org.apache.lucene.document.IntField;
 import org.apache.lucene.document.StringField;
 import org.apache.lucene.index.DirectoryReader;
+import org.apache.lucene.index.FieldInvertState;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexReader;
 import org.apache.lucene.index.IndexWriter;
@@ -41,6 +42,7 @@ import org.apache.lucene.queryparser.classic.QueryParser;
 import org.apache.lucene.search.IndexSearcher;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreDoc;
+import org.apache.lucene.search.similarities.DefaultSimilarity;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
@@ -144,7 +146,7 @@ public class LuceneLab
 		indexReader.close();
 		
 		/**
-		 * 5.d Searching TODO
+		 * 5.d Searching
 		 * =====================================================================
 		 */
 
@@ -166,16 +168,46 @@ public class LuceneLab
 		handleQuery("Info*", parser, indexSearcher);
 		handleQuery("\"Information Retrieval\"~5", parser, indexSearcher);
 		
+		/**
+		 * 5.e Tuning the Lucene Score
+		 * =====================================================================
+		 */
+		
+		// Handle some queries
+		handleQuery("compiler program", parser, indexSearcher);
+		
+		// Close index reader
+		indexReader.close();
+
+		// Create an index with an english analyzer and a custom similarity
+		CustomSimilarity customSimilarity = new CustomSimilarity();
+		Path tunedEnglishIndexPath = createIndex("indexes/english-tuned", englishAnalyzer, customSimilarity);
+
+		// Create index reader
+		indexDir = FSDirectory.open(tunedEnglishIndexPath);
+		indexReader = DirectoryReader.open(indexDir);
+		
+		// Create index searcher
+		indexSearcher = new IndexSearcher(indexReader);
+		
+		// Set custom similarity
+		indexSearcher.setSimilarity(customSimilarity);
+		
+		// Handle query with tuned score
+		System.out.println("\nTUNED SCORE:");
+		handleQuery("compiler program", parser, indexSearcher);
+		
 		// Close index reader
 		indexReader.close();
 		
-		/**
-		 * 5.e Tuning the Lucene Score TODO
-		 * =====================================================================
-		 */
 	}
 
 	private static Path createIndex(String indexPathName, Analyzer analyzer) throws IOException
+	{
+		return createIndex(indexPathName, analyzer, null);
+	}
+
+	private static Path createIndex(String indexPathName, Analyzer analyzer, DefaultSimilarity similarity) throws IOException
 	{
 		// Check if index does not already exist
 		Path indexPath = FileSystems.getDefault().getPath(indexPathName);
@@ -191,6 +223,12 @@ public class LuceneLab
 			// Not pack newly written segments in a compound file: 
 			// keep all segments of index separately on disk
 			iwc.setUseCompoundFile(false);
+			
+			// Set custom similarity
+			if (similarity != null)
+			{
+				iwc.setSimilarity(similarity);
+			}
 			
 			// Create index writer
 			IndexWriter indexWriter = new IndexWriter(indexDir, iwc);
@@ -276,6 +314,29 @@ public class LuceneLab
 		for (int i = 0; i < 10 && i < hits.length; i++) {
 			Document doc = indexSearcher.doc(hits[i].doc);
 			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hits[i].score + ")");
+		}
+	}
+	
+	private static class CustomSimilarity extends DefaultSimilarity
+	{
+		public float tf(float freq)
+		{
+			return (float) (1 + Math.log(freq));
+		}
+		
+		public float idf(long docFreq, long numDocs)
+		{
+			return  (float) Math.log(numDocs / docFreq);
+		}
+		
+		public float lengthNorm(FieldInvertState state)
+		{
+			return 1;
+		}
+		
+		public float coord(int overlap, int maxOverlap)
+		{
+			return (float) Math.sqrt(overlap / maxOverlap);
 		}
 	}
 }
