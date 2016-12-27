@@ -5,15 +5,13 @@
  * This project explores the possibilities of the Lucene indexing framework.
  * The code follows the order of the lab exercises.
  * 
- * You must provide two parameters :
- * 		<file path>
- * 		<common words path>
+ * You must provide two parameters:
+ * 		<cacm.txt path>
+ * 		<common_words.txt path>
  * 
  * Example:
  * 		C:\cacm.txt C:\common_words.txt
  */
-
-
 
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.core.StopAnalyzer;
@@ -54,8 +52,14 @@ import java.nio.file.Path;
 
 public class LuceneLab
 {
+	/**
+	 * Path to the cacm.txt file
+	 */
 	private static String cacmFilePath;
 	
+	/**
+	 * Main function
+	 */
 	public static void main(String[] args) throws Exception
 	{
 		/**
@@ -75,7 +79,7 @@ public class LuceneLab
 		// Get common_words.txt path from second argument
 		if (args.length < 2)
 		{
-			System.out.println("Missing second argument. Provide a common words file path.");
+			System.out.println("Missing second argument. Provide a common_words.txt file path.");
 			
 			return;
 		}
@@ -111,7 +115,7 @@ public class LuceneLab
 		ShingleAnalyzerWrapper shingleAnalyzerWrapper3 = new ShingleAnalyzerWrapper(3, 3);
 		Path shingle3IndexPath = createIndex("indexes/shingle-3", shingleAnalyzerWrapper3);
 
-		// Create an index with a stop analyzer, size 3
+		// Create an index with a stop analyzer
 		StopAnalyzer stopAnalyzer = new StopAnalyzer(stopWordsPath);
 		Path stopIndexPath = createIndex("indexes/stop", stopAnalyzer);
 		
@@ -154,11 +158,9 @@ public class LuceneLab
 		String fieldNames[] = {"title", "summary"};
 		MultiFieldQueryParser parser = new MultiFieldQueryParser(fieldNames, englishAnalyzer);
 
-		// Create index reader
+		// Create index searcher
 		indexDir = FSDirectory.open(englishIndexPath);
 		indexReader = DirectoryReader.open(indexDir);
-		
-		// Create index searcher
 		IndexSearcher indexSearcher = new IndexSearcher(indexReader);
 		
 		// Handle some queries
@@ -173,7 +175,7 @@ public class LuceneLab
 		 * =====================================================================
 		 */
 		
-		// Handle some queries
+		// Handle a query without tuning to compare it later
 		handleQuery("compiler program", parser, indexSearcher);
 		
 		// Close index reader
@@ -183,14 +185,12 @@ public class LuceneLab
 		CustomSimilarity customSimilarity = new CustomSimilarity();
 		Path tunedEnglishIndexPath = createIndex("indexes/english-tuned", englishAnalyzer, customSimilarity);
 
-		// Create index reader
+		// Create index searcher
 		indexDir = FSDirectory.open(tunedEnglishIndexPath);
 		indexReader = DirectoryReader.open(indexDir);
-		
-		// Create index searcher
 		indexSearcher = new IndexSearcher(indexReader);
 		
-		// Set custom similarity
+		// Set custom similarity to the searcher
 		indexSearcher.setSimilarity(customSimilarity);
 		
 		// Handle query with tuned score
@@ -202,11 +202,10 @@ public class LuceneLab
 		
 	}
 
-	private static Path createIndex(String indexPathName, Analyzer analyzer) throws IOException
-	{
-		return createIndex(indexPathName, analyzer, null);
-	}
-
+	/**
+	 * Create an index if it does not exist.
+	 * You should delete the "indexes" folder if you want to recreate them.
+	 */
 	private static Path createIndex(String indexPathName, Analyzer analyzer, DefaultSimilarity similarity) throws IOException
 	{
 		// Check if index does not already exist
@@ -300,7 +299,18 @@ public class LuceneLab
 			
 		return indexPath;
 	}
+
+	/**
+	 * @overload
+	 */
+	private static Path createIndex(String indexPathName, Analyzer analyzer) throws IOException
+	{
+		return createIndex(indexPathName, analyzer, null);
+	}
 	
+	/**
+	 * Search an index with a query and print the 10 top results.
+	 */
 	private static void handleQuery(String queryString, QueryParser parser, IndexSearcher indexSearcher) throws IOException, ParseException
 	{
 		// Parse query
@@ -316,7 +326,11 @@ public class LuceneLab
 			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hits[i].score + ")");
 		}
 	}
+
 	
+	/**
+	 * This is a custom similarity model.
+	 */
 	private static class CustomSimilarity extends DefaultSimilarity
 	{
 		public float tf(float freq)
