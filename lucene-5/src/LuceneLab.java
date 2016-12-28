@@ -5,6 +5,9 @@
  * This project explores the possibilities of the Lucene indexing framework.
  * The code follows the order of the lab exercises.
  * 
+ * IMPORTANT NOTE: Indexes are not recreated on each run.
+ * 				   You must delete them manually.
+ * 
  * You must provide two parameters:
  * 		<cacm.txt path>
  * 		<common_words.txt path>
@@ -102,20 +105,20 @@ public class LuceneLab
 		// Create an index with a whitespace analyzer
 		WhitespaceAnalyzer whitespaceAalyzer = new WhitespaceAnalyzer();
 		Path whitespaceIndexPath = createIndex("indexes/whitespace", whitespaceAalyzer);
-
+		
 		// Create an index with an english analyzer
 		EnglishAnalyzer	englishAnalyzer = new EnglishAnalyzer();
 		Path englishIndexPath = createIndex("indexes/english", englishAnalyzer);
-
+		
 		// Create an index with a shingle analyzer wrapper, size 2
 		ShingleAnalyzerWrapper shingleAnalyzerWrapper2 = new ShingleAnalyzerWrapper(2, 2);
 		Path shingle2IndexPath = createIndex("indexes/shingle-2", shingleAnalyzerWrapper2);
-
+		
 		// Create an index with a shingle analyzer wrapper, size 3
 		ShingleAnalyzerWrapper shingleAnalyzerWrapper3 = new ShingleAnalyzerWrapper(3, 3);
 		Path shingle3IndexPath = createIndex("indexes/shingle-3", shingleAnalyzerWrapper3);
-
-		// Create an index with a stop analyzer
+		
+		// Create an index with a stop analyzer, size 3
 		StopAnalyzer stopAnalyzer = new StopAnalyzer(stopWordsPath);
 		Path stopIndexPath = createIndex("indexes/stop", stopAnalyzer);
 		
@@ -133,7 +136,7 @@ public class LuceneLab
 		TermStats termStats[] = HighFreqTerms.getHighFreqTerms(indexReader, 1, "author", comparator);
 		String authorName = termStats[0].termtext.utf8ToString();
 		String numberOfPublications = Integer.toString(termStats[0].docFreq);
-		System.out.println("Author with the highest number of publications:");
+		System.out.println("\nAuthor with the highest number of publications:");
 		System.out.println(authorName + " (" + numberOfPublications + ")");
 		
 		// List the top 10 terms in the title field with their frequency.
@@ -208,11 +211,15 @@ public class LuceneLab
 	 */
 	private static Path createIndex(String indexPathName, Analyzer analyzer, DefaultSimilarity similarity) throws IOException
 	{
+		// Start timer to mesure indexing time
+		long startTime = System.nanoTime();
+		
 		// Check if index does not already exist
 		Path indexPath = FileSystems.getDefault().getPath(indexPathName);
 		Directory indexDir = FSDirectory.open(indexPath);
 		if (!DirectoryReader.indexExists(indexDir))
 		{
+			
 			// Create an index writer configuration
 			IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
 			
@@ -268,6 +275,8 @@ public class LuceneLab
 				titleFieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); // Controls how much information is stored in the postings lists.
 				titleFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
 				titleFieldType.setStoreTermVectors(true); // Store term vectors
+				titleFieldType.setStoreTermVectorPositions(true);
+				titleFieldType.setStoreTermVectorOffsets(true);
 				titleFieldType.setStored(true); // Store the field to show it in the results
 				titleFieldType.freeze(); // Prevents future changes
 				Field titleField = new Field("title", title, titleFieldType);
@@ -295,6 +304,11 @@ public class LuceneLab
 			
 			// Close index writer
 			indexWriter.close();
+			
+			// Print indexing time
+			long endTime = System.nanoTime();
+			int indexingDuration = (int) ((endTime - startTime) / 1000000);
+			System.out.println("Indexing duration with " + analyzer.getClass().getSimpleName() + ": " + indexingDuration + " ms");
 		}
 			
 		return indexPath;
