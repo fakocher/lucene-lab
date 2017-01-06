@@ -22,6 +22,7 @@ import org.apache.lucene.analysis.core.WhitespaceAnalyzer;
 import org.apache.lucene.analysis.en.EnglishAnalyzer;
 import org.apache.lucene.analysis.shingle.ShingleAnalyzerWrapper;
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
+import org.apache.lucene.analysis.util.CharArraySet;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.apache.lucene.document.FieldType;
@@ -86,134 +87,67 @@ public class LuceneLab
 			
 			return;
 		}
-		Path stopWordsPath = FileSystems.getDefault().getPath(args[1]);
+		String stopWordsFilePath = args[1];
+
+		// Get query.txt path from third argument
+		if (args.length < 2)
+		{
+			System.out.println("Missing third argument. Provide a query.txt file path.");
+			
+			return;
+		}
+		Path queryFilePath = FileSystems.getDefault().getPath(args[2]);
+
+		// Get qrels.txt path from fourth argument
+		if (args.length < 2)
+		{
+			System.out.println("Missing fourth argument. Provide a qrels.txt file path.");
+			
+			return;
+		}
+		Path qRelsPath = FileSystems.getDefault().getPath(args[3]);
 		
 		/**
-		 * 5.a Indexing
+		 * I. Indexing
 		 * =====================================================================
 		 */
 
 		// Create an index with a standard analyzer
+		System.out.println("Creating index with standard analyser if it doesn't exist...");
 		StandardAnalyzer standardAnalyzer = new StandardAnalyzer();
 		Path standardIndexPath = createIndex("indexes/standard", standardAnalyzer);
 
-		/**
-		 * 5.b Using different Analyzers
-		 * =====================================================================
-		 */
-
 		// Create an index with a whitespace analyzer
+		System.out.println("Creating index with whitespace analyser if it doesn't exist...");
 		WhitespaceAnalyzer whitespaceAalyzer = new WhitespaceAnalyzer();
 		Path whitespaceIndexPath = createIndex("indexes/whitespace", whitespaceAalyzer);
 		
 		// Create an index with an english analyzer
+		System.out.println("Creating index with english analyser if it doesn't exist...");
 		EnglishAnalyzer	englishAnalyzer = new EnglishAnalyzer();
 		Path englishIndexPath = createIndex("indexes/english", englishAnalyzer);
 		
-		// Create an index with a shingle analyzer wrapper, size 2
-		ShingleAnalyzerWrapper shingleAnalyzerWrapper2 = new ShingleAnalyzerWrapper(2, 2);
-		Path shingle2IndexPath = createIndex("indexes/shingle-2", shingleAnalyzerWrapper2);
-		
-		// Create an index with a shingle analyzer wrapper, size 3
-		ShingleAnalyzerWrapper shingleAnalyzerWrapper3 = new ShingleAnalyzerWrapper(3, 3);
-		Path shingle3IndexPath = createIndex("indexes/shingle-3", shingleAnalyzerWrapper3);
-		
-		// Create an index with a stop analyzer, size 3
-		StopAnalyzer stopAnalyzer = new StopAnalyzer(stopWordsPath);
-		Path stopIndexPath = createIndex("indexes/stop", stopAnalyzer);
-		
-		/**
-		 * 5.c Reading Index
-		 * =====================================================================
-		 */
-
-		// Create index reader
-		Directory indexDir = FSDirectory.open(standardIndexPath);
-		IndexReader indexReader = DirectoryReader.open(indexDir);
-		
-		// Look for the author with the highest number of publication
-		DocFreqComparator comparator = new HighFreqTerms.DocFreqComparator();
-		TermStats termStats[] = HighFreqTerms.getHighFreqTerms(indexReader, 1, "author", comparator);
-		String authorName = termStats[0].termtext.utf8ToString();
-		String numberOfPublications = Integer.toString(termStats[0].docFreq);
-		System.out.println("\nAuthor with the highest number of publications:");
-		System.out.println(authorName + " (" + numberOfPublications + ")");
-		
-		// List the top 10 terms in the title field with their frequency.
-		termStats = HighFreqTerms.getHighFreqTerms(indexReader, 10, "title", comparator);
-		System.out.println("\nTop 10 terms in the title field:");
-		for (TermStats termStatsItem: termStats)
+		// Parsing common_words.txt file
+		BufferedReader in = new BufferedReader(new FileReader(stopWordsFilePath));
+		String stopWord;
+		CharArraySet stopWords = new CharArraySet(0, false);
+		while((stopWord = in.readLine()) != null)
 		{
-			String title = termStatsItem.termtext.utf8ToString();
-			String frequency = Integer.toString(termStatsItem.docFreq);
-			System.out.println(title + " (" + frequency + ")");
+			stopWords.add(stopWord);
 		}
 		
-		// Close index reader
-		indexReader.close();
-		
-		/**
-		 * 5.d Searching
-		 * =====================================================================
-		 */
-
-		// Create query parser
-		String fieldNames[] = {"title", "summary"};
-		MultiFieldQueryParser parser = new MultiFieldQueryParser(fieldNames, englishAnalyzer);
-
-		// Create index searcher
-		indexDir = FSDirectory.open(englishIndexPath);
-		indexReader = DirectoryReader.open(indexDir);
-		IndexSearcher indexSearcher = new IndexSearcher(indexReader);
-		
-		// Handle some queries
-		handleQuery("\"Information Retrieval\"", parser, indexSearcher);
-		handleQuery("Information AND Retrieval", parser, indexSearcher);
-		handleQuery("+Retrieval Information NOT Database", parser, indexSearcher);
-		handleQuery("Info*", parser, indexSearcher);
-		handleQuery("\"Information Retrieval\"~5", parser, indexSearcher);
-		
-		/**
-		 * 5.e Tuning the Lucene Score
-		 * =====================================================================
-		 */
-		
-		// Handle a query without tuning to compare it later
-		handleQuery("compiler program", parser, indexSearcher);
-		
-		// Close index reader
-		indexReader.close();
-
-		// Create an index with an english analyzer and a custom similarity
-		CustomSimilarity customSimilarity = new CustomSimilarity();
-		Path tunedEnglishIndexPath = createIndex("indexes/english-tuned", englishAnalyzer, customSimilarity);
-
-		// Create index searcher
-		indexDir = FSDirectory.open(tunedEnglishIndexPath);
-		indexReader = DirectoryReader.open(indexDir);
-		indexSearcher = new IndexSearcher(indexReader);
-		
-		// Set custom similarity to the searcher
-		indexSearcher.setSimilarity(customSimilarity);
-		
-		// Handle query with tuned score
-		System.out.println("\nTUNED SCORE:");
-		handleQuery("compiler program", parser, indexSearcher);
-		
-		// Close index reader
-		indexReader.close();
-		
+		// Create an index with an english analyzer and custom stop words
+		System.out.println("Creating index with english analyser and custom stop words if it doesn't exist...");
+		EnglishAnalyzer customEnglishAnalyzer = new EnglishAnalyzer(stopWords);
+		Path customEnglishIndexPath = createIndex("indexes/english-custom", customEnglishAnalyzer);
 	}
 
 	/**
 	 * Create an index if it does not exist.
 	 * You should delete the "indexes" folder if you want to recreate them.
 	 */
-	private static Path createIndex(String indexPathName, Analyzer analyzer, DefaultSimilarity similarity) throws IOException
-	{
-		// Start timer to mesure indexing time
-		long startTime = System.nanoTime();
-		
+	private static Path createIndex(String indexPathName, Analyzer analyzer) throws IOException
+	{		
 		// Check if index does not already exist
 		Path indexPath = FileSystems.getDefault().getPath(indexPathName);
 		Directory indexDir = FSDirectory.open(indexPath);
@@ -230,14 +164,18 @@ public class LuceneLab
 			// keep all segments of index separately on disk
 			iwc.setUseCompoundFile(false);
 			
-			// Set custom similarity
-			if (similarity != null)
-			{
-				iwc.setSimilarity(similarity);
-			}
-			
 			// Create index writer
 			IndexWriter indexWriter = new IndexWriter(indexDir, iwc);
+			
+			// Create a custom field for title and content
+			FieldType customFieldType = new FieldType();
+			customFieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); // Controls how much information is stored in the postings lists.
+			customFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
+			customFieldType.setStoreTermVectors(true); // Store term vectors
+			customFieldType.setStoreTermVectorPositions(true);
+			customFieldType.setStoreTermVectorOffsets(true);
+			customFieldType.setStored(true); // Store the field to show it in the results
+			customFieldType.freeze(); // Prevents future changes
 			
 			// Create reader to read cacm.txt
 			BufferedReader in = new BufferedReader(new FileReader(cacmFilePath));
@@ -252,46 +190,21 @@ public class LuceneLab
 				// Gather the field values from the file line
 				String[] fields  = line.split("\t");
 				
-				// Create an ID field
+				// Index the ID
 				int id = Integer.parseInt(fields[0]);
 				IntField idField = new IntField("id", id, Field.Store.YES);
 				doc.add(idField);
 				
-				// Create a string field for each author
-				String[] authors = fields[1].split(";");
-				StringField[] authorFields = new StringField[authors.length - 1];
-				for (int i = 0; i < authors.length - 1; i++)
-				{
-					authorFields[i] = new StringField("author", authors[i], Field.Store.YES);
-				}
-				for (StringField authorField: authorFields)
-				{
-					doc.add(authorField);
-				}
-				
-				// Create a string title field
+				// Indexing title
 				String title = fields[2];
-				FieldType titleFieldType = new FieldType();
-				titleFieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); // Controls how much information is stored in the postings lists.
-				titleFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
-				titleFieldType.setStoreTermVectors(true); // Store term vectors
-				titleFieldType.setStoreTermVectorPositions(true);
-				titleFieldType.setStoreTermVectorOffsets(true);
-				titleFieldType.setStored(true); // Store the field to show it in the results
-				titleFieldType.freeze(); // Prevents future changes
-				Field titleField = new Field("title", title, titleFieldType);
+				Field titleField = new Field("content", title, customFieldType);
 				doc.add(titleField);
 				
 				// Create a summary field if one exists
 				if (fields.length > 3)
 				{
 					String summary = fields[3];
-					FieldType summaryFieldType = new FieldType();
-					summaryFieldType.setIndexOptions(IndexOptions.DOCS_AND_FREQS_AND_POSITIONS); // Controls how much information is stored in the postings lists.
-					summaryFieldType.setTokenized(true); // Tokenize the field's contents using configured analyzer
-					summaryFieldType.setStoreTermVectors(true); // Store term vectors
-					summaryFieldType.freeze(); // Prevents future changes
-					Field summaryField = new Field("summary", summary, summaryFieldType);
+					Field summaryField = new Field("content", summary, customFieldType);
 					doc.add(summaryField);
 				}
 				
@@ -304,67 +217,8 @@ public class LuceneLab
 			
 			// Close index writer
 			indexWriter.close();
-			
-			// Print indexing time
-			long endTime = System.nanoTime();
-			int indexingDuration = (int) ((endTime - startTime) / 1000000);
-			System.out.println("Indexing duration with " + analyzer.getClass().getSimpleName() + ": " + indexingDuration + " ms");
 		}
 			
 		return indexPath;
-	}
-
-	/**
-	 * @overload
-	 */
-	private static Path createIndex(String indexPathName, Analyzer analyzer) throws IOException
-	{
-		return createIndex(indexPathName, analyzer, null);
-	}
-	
-	/**
-	 * Search an index with a query and print the 10 top results.
-	 */
-	private static void handleQuery(String queryString, QueryParser parser, IndexSearcher indexSearcher) throws IOException, ParseException
-	{
-		// Parse query
-		Query query = parser.parse(queryString);
-		
-		// Search query
-		ScoreDoc[] hits = indexSearcher.search(query, 1000).scoreDocs;
-
-		// Print results
-		System.out.println("\nQuery: `" + queryString + "` (" + hits.length + " result(s))");
-		for (int i = 0; i < 10 && i < hits.length; i++) {
-			Document doc = indexSearcher.doc(hits[i].doc);
-			System.out.println(doc.get("id") + ": " + doc.get("title") + " (" + hits[i].score + ")");
-		}
-	}
-
-	
-	/**
-	 * This is a custom similarity model.
-	 */
-	private static class CustomSimilarity extends DefaultSimilarity
-	{
-		public float tf(float freq)
-		{
-			return (float) (1 + Math.log(freq));
-		}
-		
-		public float idf(long docFreq, long numDocs)
-		{
-			return  (float) Math.log(numDocs / docFreq);
-		}
-		
-		public float lengthNorm(FieldInvertState state)
-		{
-			return 1;
-		}
-		
-		public float coord(int overlap, int maxOverlap)
-		{
-			return (float) Math.sqrt(overlap / maxOverlap);
-		}
 	}
 }
