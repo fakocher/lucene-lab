@@ -65,6 +65,11 @@ public class LuceneLab
 	private static String cacmFilePath;
 	
 	/**
+	 * Path to the query.txt file
+	 */
+	private static String queryFilePath;
+	
+	/**
 	 * Main function
 	 */
 	public static void main(String[] args) throws Exception
@@ -99,7 +104,7 @@ public class LuceneLab
 			
 			return;
 		}
-		String queryFilePath = args[2];
+		queryFilePath = args[2];
 
 		// Get qrels.txt path from fourth argument
 		if (args.length < 2)
@@ -150,38 +155,27 @@ public class LuceneLab
 		 */
 
 		System.out.println("Querying indexes...");
+	}
+
+	/**
+	 * evaluate the index and print out the metrics
+	 * @throws ParseException 
+	 * @throws IOException 
+	 */
+	
+	private static void evaluateIndex(Path indexPath, Analyzer analyzer) throws ParseException, IOException
+	{
+		// Creating parser
+		QueryParser parser = new QueryParser("content", analyzer);
 		
-		// Creating parsers
-		QueryParser standardParser = new QueryParser("content", standardAnalyzer);
-		QueryParser whitespaceParser = new QueryParser("content", whitespaceAalyzer);
-		QueryParser englishParser = new QueryParser("content", englishAnalyzer);
-		QueryParser customEnglishParser = new QueryParser("content", customEnglishAnalyzer);
-		
-		// Creating index searchers
-		
-		Directory standardIndexDir = FSDirectory.open(standardIndexPath);
-		IndexReader standardIndexReader = DirectoryReader.open(standardIndexDir);
-		IndexSearcher standardIndexSearcher = new IndexSearcher(standardIndexReader);
-		
-		Directory whitespaceIndexDir = FSDirectory.open(whitespaceIndexPath);
-		IndexReader whitespaceIndexReader = DirectoryReader.open(whitespaceIndexDir);
-		IndexSearcher whitespaceIndexSearcher = new IndexSearcher(whitespaceIndexReader);
-		
-		Directory englishIndexDir = FSDirectory.open(englishIndexPath);
-		IndexReader englishIndexReader = DirectoryReader.open(englishIndexDir);
-		IndexSearcher englishIndexSearcher = new IndexSearcher(englishIndexReader);
-		
-		Directory customEnglishIndexDir = FSDirectory.open(customEnglishIndexPath);
-		IndexReader customEnglishIndexReader = DirectoryReader.open(customEnglishIndexDir);
-		IndexSearcher customEnglishIndexSearcher = new IndexSearcher(customEnglishIndexReader);
+		// Creating index searcher		
+		Directory indexDir = FSDirectory.open(indexPath);
+		IndexReader indexReader = DirectoryReader.open(indexDir);
+		IndexSearcher indexSearcher = new IndexSearcher(indexReader);
 		
 		// Parsing query file
-		ArrayList<String> queries = new ArrayList<String>();
-		ArrayList<ScoreDoc[]> standardHitsList = new ArrayList<ScoreDoc[]>();
-		ArrayList<ScoreDoc[]> whitespaceHitsList = new ArrayList<ScoreDoc[]>();
-		ArrayList<ScoreDoc[]> englishHitsList = new ArrayList<ScoreDoc[]>();
-		ArrayList<ScoreDoc[]> customEnglishHitsList = new ArrayList<ScoreDoc[]>();
-		in = new BufferedReader(new FileReader(queryFilePath));
+		ArrayList<ScoreDoc[]> hitsList = new ArrayList<ScoreDoc[]>();
+		BufferedReader in = new BufferedReader(new FileReader(queryFilePath));
 		String line;
 		while((line = in.readLine()) != null)
 		{
@@ -192,21 +186,10 @@ public class LuceneLab
 				String[] splitLine = line.split("\t");
 				Integer id = Integer.parseInt(splitLine[0]);
 				String queryString = QueryParser.escape(splitLine[1]);
-				queries.add(queryString);
 				
-				// Querying indexes
-				
-				Query standardQuery = standardParser.parse(queryString);
-				standardHitsList.add(standardIndexSearcher.search(standardQuery, 1000).scoreDocs);
-				
-				Query whitespaceQuery = whitespaceParser.parse(queryString);
-				whitespaceHitsList.add(whitespaceIndexSearcher.search(whitespaceQuery, 1000).scoreDocs);
-				
-				Query englishQuery = englishParser.parse(queryString);
-				englishHitsList.add(englishIndexSearcher.search(englishQuery, 1000).scoreDocs);
-				
-				Query customEnglishQuery = customEnglishParser.parse(queryString);
-				customEnglishHitsList.add(customEnglishIndexSearcher.search(customEnglishQuery, 1000).scoreDocs);
+				// Querying index
+				Query query = parser.parse(queryString);
+				hitsList.add(indexSearcher.search(query, 1000).scoreDocs);
 			}
 		}
 	}
