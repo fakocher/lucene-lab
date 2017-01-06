@@ -49,10 +49,13 @@ import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.FSDirectory;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public class LuceneLab
 {
@@ -96,7 +99,7 @@ public class LuceneLab
 			
 			return;
 		}
-		Path queryFilePath = FileSystems.getDefault().getPath(args[2]);
+		String queryFilePath = args[2];
 
 		// Get qrels.txt path from fourth argument
 		if (args.length < 2)
@@ -140,6 +143,72 @@ public class LuceneLab
 		System.out.println("Creating index with english analyser and custom stop words if it doesn't exist...");
 		EnglishAnalyzer customEnglishAnalyzer = new EnglishAnalyzer(stopWords);
 		Path customEnglishIndexPath = createIndex("indexes/english-custom", customEnglishAnalyzer);
+		
+		/**
+		 * II. Querying
+		 * =====================================================================
+		 */
+
+		System.out.println("Querying indexes...");
+		
+		// Creating parsers
+		QueryParser standardParser = new QueryParser("content", standardAnalyzer);
+		QueryParser whitespaceParser = new QueryParser("content", whitespaceAalyzer);
+		QueryParser englishParser = new QueryParser("content", englishAnalyzer);
+		QueryParser customEnglishParser = new QueryParser("content", customEnglishAnalyzer);
+		
+		// Creating index searchers
+		
+		Directory standardIndexDir = FSDirectory.open(standardIndexPath);
+		IndexReader standardIndexReader = DirectoryReader.open(standardIndexDir);
+		IndexSearcher standardIndexSearcher = new IndexSearcher(standardIndexReader);
+		
+		Directory whitespaceIndexDir = FSDirectory.open(whitespaceIndexPath);
+		IndexReader whitespaceIndexReader = DirectoryReader.open(whitespaceIndexDir);
+		IndexSearcher whitespaceIndexSearcher = new IndexSearcher(whitespaceIndexReader);
+		
+		Directory englishIndexDir = FSDirectory.open(englishIndexPath);
+		IndexReader englishIndexReader = DirectoryReader.open(englishIndexDir);
+		IndexSearcher englishIndexSearcher = new IndexSearcher(englishIndexReader);
+		
+		Directory customEnglishIndexDir = FSDirectory.open(customEnglishIndexPath);
+		IndexReader customEnglishIndexReader = DirectoryReader.open(customEnglishIndexDir);
+		IndexSearcher customEnglishIndexSearcher = new IndexSearcher(customEnglishIndexReader);
+		
+		// Parsing query file
+		ArrayList<String> queries = new ArrayList<String>();
+		ArrayList<ScoreDoc[]> standardHitsList = new ArrayList<ScoreDoc[]>();
+		ArrayList<ScoreDoc[]> whitespaceHitsList = new ArrayList<ScoreDoc[]>();
+		ArrayList<ScoreDoc[]> englishHitsList = new ArrayList<ScoreDoc[]>();
+		ArrayList<ScoreDoc[]> customEnglishHitsList = new ArrayList<ScoreDoc[]>();
+		in = new BufferedReader(new FileReader(queryFilePath));
+		String line;
+		while((line = in.readLine()) != null)
+		{
+			// If line is not empty
+			if (!line.trim().isEmpty())
+			{
+				// Parsing line
+				String[] splitLine = line.split("\t");
+				Integer id = Integer.parseInt(splitLine[0]);
+				String queryString = QueryParser.escape(splitLine[1]);
+				queries.add(queryString);
+				
+				// Querying indexes
+				
+				Query standardQuery = standardParser.parse(queryString);
+				standardHitsList.add(standardIndexSearcher.search(standardQuery, 1000).scoreDocs);
+				
+				Query whitespaceQuery = whitespaceParser.parse(queryString);
+				whitespaceHitsList.add(whitespaceIndexSearcher.search(whitespaceQuery, 1000).scoreDocs);
+				
+				Query englishQuery = englishParser.parse(queryString);
+				englishHitsList.add(englishIndexSearcher.search(englishQuery, 1000).scoreDocs);
+				
+				Query customEnglishQuery = customEnglishParser.parse(queryString);
+				customEnglishHitsList.add(customEnglishIndexSearcher.search(customEnglishQuery, 1000).scoreDocs);
+			}
+		}
 	}
 
 	/**
