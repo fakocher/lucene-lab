@@ -50,11 +50,13 @@ import org.apache.lucene.store.FSDirectory;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 public class LuceneLab
@@ -68,6 +70,11 @@ public class LuceneLab
 	 * Path to the query.txt file
 	 */
 	private static String queryFilePath;
+	
+	/**
+	 * Path to the qrels.txt file
+	 */
+	private static String qrelsFilePath;
 	
 	/**
 	 * Main function
@@ -113,7 +120,7 @@ public class LuceneLab
 			
 			return;
 		}
-		Path qRelsPath = FileSystems.getDefault().getPath(args[3]);
+		qrelsFilePath = args[3];
 		
 		/**
 		 * I. Indexing
@@ -127,8 +134,8 @@ public class LuceneLab
 
 		// Create an index with a whitespace analyzer
 		System.out.println("Creating index with whitespace analyser if it doesn't exist...");
-		WhitespaceAnalyzer whitespaceAalyzer = new WhitespaceAnalyzer();
-		Path whitespaceIndexPath = createIndex("indexes/whitespace", whitespaceAalyzer);
+		WhitespaceAnalyzer whitespaceAnalyzer = new WhitespaceAnalyzer();
+		Path whitespaceIndexPath = createIndex("indexes/whitespace", whitespaceAnalyzer);
 		
 		// Create an index with an english analyzer
 		System.out.println("Creating index with english analyser if it doesn't exist...");
@@ -154,16 +161,41 @@ public class LuceneLab
 		 * =====================================================================
 		 */
 
+		// Getting a hits list for each query for each analyzer
 		System.out.println("Querying indexes...");
+		ArrayList<ScoreDoc[]> standardHitsList = queryIndex(standardIndexPath, standardAnalyzer);
+		ArrayList<ScoreDoc[]> whitespaceHitsList = queryIndex(whitespaceIndexPath, whitespaceAnalyzer);
+		ArrayList<ScoreDoc[]> englishHitsList = queryIndex(englishIndexPath, englishAnalyzer);
+		ArrayList<ScoreDoc[]> customEnglishHitsList = queryIndex(customEnglishIndexPath, customEnglishAnalyzer);
+		
+		/**
+		 * III. Evaluation
+		 * =====================================================================
+		 */
+		
+		/**
+		 * 1) Summary statistics
+		 * ---------------------
+		 */
+		
+		/**
+		 * 2) Average Precision at Standard Recall Levels
+		 * ----------------------------------------------
+		 */
+		
+		// for each analyzer, compute the average precision at standard recall levels
+		// and generate a CSV file for plotting use
+		computePrecision("standard", standardHitsList);
+		computePrecision("whitespace", whitespaceHitsList);
+		computePrecision("english", englishHitsList);
+		computePrecision("custom-english", customEnglishHitsList);
 	}
 
 	/**
 	 * evaluate the index and print out the metrics
-	 * @throws ParseException 
-	 * @throws IOException 
 	 */
 	
-	private static void evaluateIndex(Path indexPath, Analyzer analyzer) throws ParseException, IOException
+	private static ArrayList<ScoreDoc[]> queryIndex(Path indexPath, Analyzer analyzer) throws ParseException, IOException
 	{
 		// Creating parser
 		QueryParser parser = new QueryParser("content", analyzer);
@@ -189,8 +221,47 @@ public class LuceneLab
 				
 				// Querying index
 				Query query = parser.parse(queryString);
-				hitsList.add(indexSearcher.search(query, 1000).scoreDocs);
+				ScoreDoc[] hits = indexSearcher.search(query, 1000).scoreDocs;
+				hitsList.add(hits);
 			}
+		}
+		
+		return hitsList;
+	}
+	
+	/**
+	 * Compute statistics with a hit list.
+	 * for each query: total retrieved, total relevant retrieved
+	 */
+	private static Integer[][] computeStatistics(ArrayList<ScoreDoc[]> hitsList)
+	{
+		Integer[][] statistics = new Integer[hitsList.size()][4];
+	}
+	
+	/**
+	 * Compute the average precision at standard recall levels
+	 * and generate a CSV file for plotting use
+	 */
+	private static void computePrecision(String fileName, ArrayList<ScoreDoc[]> hitsList) throws IOException
+	{
+		Float[][] precisionRecall = new Float[hitsList.size()][11];
+		
+		// Parsing qrels file
+		BufferedReader in = new BufferedReader(new FileReader(qrelsFilePath));
+		
+		// Looping over the queries
+		String line;
+		while((line = in.readLine()) != null)
+		{
+			// Parsing line
+			String[] splitLine = line.split(";");
+			Integer id = Integer.parseInt(splitLine[0]);
+			String[] relDocs = splitLine[1].split(",");
+			
+			// Getting the query's hits
+			ScoreDoc[] hits = hitsList.get(id);
+			
+			// Loop over hits
 		}
 	}
 
@@ -205,7 +276,6 @@ public class LuceneLab
 		Directory indexDir = FSDirectory.open(indexPath);
 		if (!DirectoryReader.indexExists(indexDir))
 		{
-			
 			// Create an index writer configuration
 			IndexWriterConfig iwc = new IndexWriterConfig(analyzer);
 			
