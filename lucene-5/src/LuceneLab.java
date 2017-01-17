@@ -53,8 +53,10 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
@@ -270,10 +272,14 @@ public class LuceneLab
 		
 		// for each analyzer, compute the average precision at standard recall levels
 		// and generate a CSV file for plotting use
-		//computePrecision("standard", standardHitsList);
-		//computePrecision("whitespace", whitespaceHitsList);
-		//computePrecision("english", englishHitsList);
-		//computePrecision("custom-english", customEnglishHitsList);
+		System.out.println("2) Average Precision at Standard Recall Levels");
+		System.out.println();
+		System.out.println("Writing CSV file...");
+		computePrecision("standard", standardStatistics, standardHitsList);
+		computePrecision("whitespace", whitespaceStatistics, whitespaceHitsList);
+		computePrecision("english", englishStatistics, englishHitsList);
+		computePrecision("custom-english", customEnglishStatistics, customEnglishHitsList);
+		System.out.println("DONE! Check CSV files.");
 	}
 
 	/**
@@ -382,27 +388,71 @@ public class LuceneLab
 	 * Compute the average precision at standard recall levels
 	 * and generate a CSV file for plotting use
 	 */
-	private static void computePrecision(String fileName, ArrayList<ScoreDoc[]> hitsList) throws IOException
+	private static void computePrecision(String analyzerName, int[][] stats, ArrayList<ScoreDoc[]> hitsList) throws IOException
 	{
-		Float[][] precisionRecall = new Float[hitsList.size()][11];
+		float[][] precisionRecall = new float[NB_QUERIES][11];
+		float[] precisionRecallAverage = new float[11];
 		
-		// Parsing qrels file
-		BufferedReader in = new BufferedReader(new FileReader(qrelsFilePath));
-		
-		// Looping over the queries
-		String line;
-		while((line = in.readLine()) != null)
+		// Loop over queries to compute precision
+		for (int queryIndex = 0; queryIndex < NB_QUERIES; queryIndex++)
 		{
-			// Parsing line
-			String[] splitLine = line.split(";");
-			int id = Integer.parseInt(splitLine[0]);
-			String[] relDocs = splitLine[1].split(",");
-			
-			// Getting the query's hits
-			ScoreDoc[] hits = hitsList.get(id);
-			
-			// Loop over hits
+			if (stats[queryIndex][1] != 0)
+			{
+				int recallIndex = 0;
+				int relevantRetrieved = 0;
+				float recall = 0;
+						
+				// Calculate recall increment
+				double recallIncrement = 1.0 / ((double) stats[queryIndex][1]);
+						
+				// Loop over the retrieved docs
+				for (int hitsIndex = 0; hitsIndex < hitsList.get(queryIndex).length; hitsIndex++)
+				{
+					// Check if the document retrieved is relevant
+					if (relevantDocs[queryIndex].contains(hitsList.get(queryIndex)[hitsIndex].doc))
+					{
+						relevantRetrieved++;
+						recall += recallIncrement;
+						
+						float precision = ((float) relevantRetrieved) / ((float) (hitsIndex + 1));
+						
+						while (recallIndex / 10.0 <= recall)
+						{
+							precisionRecall[queryIndex][recallIndex] = precision;
+							
+						    recallIndex += 1;
+						}
+					}
+				}
+			}
 		}
+
+		// Prepare CSV file
+		PrintWriter csvWriter = new PrintWriter(new File(analyzerName + ".csv"));
+		csvWriter.print("");
+        StringBuilder stringBuilder = new StringBuilder();
+		DecimalFormat format = new DecimalFormat("##.0000");
+		
+		// Loop over recall levels to compute average precision
+		// Also write the CSV file
+		for (int recallIndex = 0; recallIndex < 11; recallIndex++)
+		{
+			float precisionSum = 0;
+
+			for (int queryIndex = 0; queryIndex < NB_QUERIES; queryIndex++)
+			{
+				precisionSum += precisionRecall[queryIndex][recallIndex];
+			}
+			
+			precisionRecallAverage[recallIndex] = precisionSum / NB_QUERIES;
+
+			stringBuilder.append(format.format(precisionRecallAverage[recallIndex]));
+			stringBuilder.append(",");
+		}
+
+		csvWriter.write(stringBuilder.toString());
+		csvWriter.write("\n");
+		csvWriter.close();
 	}
 
 	/**
