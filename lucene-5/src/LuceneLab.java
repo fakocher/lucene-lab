@@ -56,6 +56,7 @@ import java.io.IOException;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
@@ -75,6 +76,16 @@ public class LuceneLab
 	 * Path to the qrels.txt file
 	 */
 	private static String qrelsFilePath;
+	
+	/**
+	 * Relevant docs for each query
+	 */
+	private static List<Integer>[] relevantDocs;
+	
+	/** 
+	 * Number of queries
+	 */
+	private static final int NB_QUERIES = 64;
 	
 	/**
 	 * Main function
@@ -163,6 +174,7 @@ public class LuceneLab
 
 		// Getting a hits list for each query for each analyzer
 		System.out.println("Querying indexes...");
+		System.out.println();
 		ArrayList<ScoreDoc[]> standardHitsList = queryIndex(standardIndexPath, standardAnalyzer);
 		ArrayList<ScoreDoc[]> whitespaceHitsList = queryIndex(whitespaceIndexPath, whitespaceAnalyzer);
 		ArrayList<ScoreDoc[]> englishHitsList = queryIndex(englishIndexPath, englishAnalyzer);
@@ -177,6 +189,79 @@ public class LuceneLab
 		 * 1) Summary statistics
 		 * ---------------------
 		 */
+		System.out.println("1) Summary statistics");
+		System.out.println("---------------------");
+		System.out.println();
+		
+		/**
+		 * a. total number of documents
+		 */
+
+		System.out.println("a. total number of documents");
+		System.out.println();
+		
+		int totalNbDocs = countDocs(standardIndexPath);
+		
+		System.out.println(totalNbDocs);
+		System.out.println();
+		
+		/**
+		 * b. total number retrieved documents for all queries 
+		 */
+		
+		// Creating relevant array from file
+		createRelevantDocsArray();
+		
+		// Computing statistics for all indexes
+		int[][] standardStatistics = computeStatistics(standardHitsList);
+		int[][] whitespaceStatistics = computeStatistics(whitespaceHitsList);
+		int[][] englishStatistics = computeStatistics(englishHitsList);
+		int[][] customEnglishStatistics = computeStatistics(customEnglishHitsList);
+
+		System.out.println("b. total number retrieved documents for all queries");
+		System.out.println();
+		
+		printStats(standardStatistics, 0, "standard");
+		printStats(whitespaceStatistics, 0, "whitespace");
+		printStats(englishStatistics, 0, "english");
+		printStats(customEnglishStatistics, 0, "custom english");
+
+		System.out.println();
+		
+		/**
+		 * c. total number of relevant documents for all queries 
+		 */
+
+		System.out.println("c. total number of relevant documents for all queries");
+		System.out.println();
+
+		// Print relevant docs
+		for (int i = 0; i < relevantDocs.length; i++)
+		{
+			if (relevantDocs[i] == null)
+			{
+				System.out.println((i + 1) + ": 0");
+			}
+			else
+			{
+				System.out.println((i + 1) + ": " + relevantDocs[i].size());
+			}
+		}
+		
+		System.out.println();
+		
+		/**
+		 * d. total number of relevant documents retrieved for all queries. 
+		 */
+
+		System.out.println("d. total number of relevant documents retrieved for all queries");
+		System.out.println();
+		
+		printStats(standardStatistics, 1, "standard");
+		printStats(whitespaceStatistics, 1, "whitespace");
+		printStats(englishStatistics, 1, "english");
+		printStats(customEnglishStatistics, 1, "custom english");
+		
 		
 		/**
 		 * 2) Average Precision at Standard Recall Levels
@@ -185,16 +270,15 @@ public class LuceneLab
 		
 		// for each analyzer, compute the average precision at standard recall levels
 		// and generate a CSV file for plotting use
-		computePrecision("standard", standardHitsList);
-		computePrecision("whitespace", whitespaceHitsList);
-		computePrecision("english", englishHitsList);
-		computePrecision("custom-english", customEnglishHitsList);
+		//computePrecision("standard", standardHitsList);
+		//computePrecision("whitespace", whitespaceHitsList);
+		//computePrecision("english", englishHitsList);
+		//computePrecision("custom-english", customEnglishHitsList);
 	}
 
 	/**
 	 * evaluate the index and print out the metrics
 	 */
-	
 	private static ArrayList<ScoreDoc[]> queryIndex(Path indexPath, Analyzer analyzer) throws ParseException, IOException
 	{
 		// Creating parser
@@ -216,26 +300,82 @@ public class LuceneLab
 			{
 				// Parsing line
 				String[] splitLine = line.split("\t");
-				Integer id = Integer.parseInt(splitLine[0]);
+				int id = Integer.parseInt(splitLine[0]);
 				String queryString = QueryParser.escape(splitLine[1]);
 				
 				// Querying index
 				Query query = parser.parse(queryString);
-				ScoreDoc[] hits = indexSearcher.search(query, 1000).scoreDocs;
+				ScoreDoc[] hits = indexSearcher.search(query, 10000).scoreDocs;
 				hitsList.add(hits);
 			}
 		}
 		
+		// Closing index reader
+		indexReader.close();
+		
 		return hitsList;
+	}
+	
+	/**
+	 * Create an array with the number of relevant documents for each query
+	 * based on the qrels.txt file.
+	 * @return 
+	 */
+	@SuppressWarnings("unchecked")
+	private static void createRelevantDocsArray() throws NumberFormatException, IOException
+	{
+		relevantDocs = new ArrayList[NB_QUERIES];
+		BufferedReader in = new BufferedReader(new FileReader(qrelsFilePath));
+		
+		// Looping over the queries
+		String line;
+		while((line = in.readLine()) != null)
+		{
+			// Parsing line
+			String[] splitLine = line.split(";");
+			int id = Integer.parseInt(splitLine[0]);
+			String[] relDocs = splitLine[1].split(",");
+			
+			relevantDocs[id - 1] = new ArrayList<Integer>();
+			
+			for (int i = 0; i < relDocs.length; i++)
+			{
+				relevantDocs[id - 1].add(Integer.parseInt(relDocs[i]));
+			}
+		}
 	}
 	
 	/**
 	 * Compute statistics with a hit list.
 	 * for each query: total retrieved, total relevant retrieved
 	 */
-	private static Integer[][] computeStatistics(ArrayList<ScoreDoc[]> hitsList)
+	private static int[][] computeStatistics(ArrayList<ScoreDoc[]> hitsList)
 	{
-		Integer[][] statistics = new Integer[hitsList.size()][4];
+ 		int[][] statistics = new int[NB_QUERIES][2];
+		
+		// Loop over queries
+		for (int i = 0; i < NB_QUERIES; i++)
+		{
+			// Get total retrieved
+			statistics[i][0] = hitsList.get(i).length;
+
+			// Compute total relevant retrieved
+			statistics[i][1] = 0;
+			
+			if (relevantDocs[i] != null)
+			{
+				for (int j = 0; j < hitsList.get(i).length; j++)
+				{
+					// Check if the document retrieved is relevant
+					if (relevantDocs[i].contains(hitsList.get(i)[j].doc))
+					{
+						statistics[i][1] += 1;
+					}
+				}
+			}
+		}
+		
+		return statistics;
 	}
 	
 	/**
@@ -255,7 +395,7 @@ public class LuceneLab
 		{
 			// Parsing line
 			String[] splitLine = line.split(";");
-			Integer id = Integer.parseInt(splitLine[0]);
+			int id = Integer.parseInt(splitLine[0]);
 			String[] relDocs = splitLine[1].split(",");
 			
 			// Getting the query's hits
@@ -342,5 +482,36 @@ public class LuceneLab
 		}
 			
 		return indexPath;
+	}
+	
+	private static int countDocs(Path indexPath) throws IOException
+	{
+		// Creating index reader		
+		Directory indexDir = FSDirectory.open(indexPath);
+		IndexReader indexReader = DirectoryReader.open(indexDir);
+		
+		// Get total number of docs
+		int totalNbDocs = indexReader.numDocs();
+		
+		// Closing index reader
+		indexReader.close();
+		
+		return totalNbDocs;
+	}
+
+	/**
+	 * Print given stats
+	 */
+	private static void printStats(int[][] stats, int index, String analyzerName)
+	{
+		System.out.println("With " + analyzerName + " analyzer");
+		System.out.println();
+		
+		for (int i = 0; i < stats.length; i++)
+		{
+			System.out.println((i + 1) + ": " + stats[i][index]);
+		}
+		
+		System.out.println();
 	}
 }
