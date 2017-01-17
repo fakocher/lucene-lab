@@ -270,15 +270,24 @@ public class LuceneLab
 		 * ----------------------------------------------
 		 */
 		
-		// for each analyzer, compute the average precision at standard recall levels
+		// for each index, compute the average precision at standard recall levels
 		// and generate a CSV file for plotting use
+		
 		System.out.println("2) Average Precision at Standard Recall Levels");
 		System.out.println();
 		System.out.println("Writing CSV file...");
-		computePrecision("standard", standardStatistics, standardHitsList);
-		computePrecision("whitespace", whitespaceStatistics, whitespaceHitsList);
-		computePrecision("english", englishStatistics, englishHitsList);
-		computePrecision("custom-english", customEnglishStatistics, customEnglishHitsList);
+		
+		PrintWriter csvWriter = new PrintWriter(new File("precision-recall.csv"));
+		
+		csvWriter.print("");
+		
+		computePrecision("standard", standardStatistics, standardHitsList, csvWriter);
+		computePrecision("whitespace", whitespaceStatistics, whitespaceHitsList, csvWriter);
+		computePrecision("english", englishStatistics, englishHitsList, csvWriter);
+		computePrecision("custom-english", customEnglishStatistics, customEnglishHitsList, csvWriter);
+		
+		csvWriter.close();
+		
 		System.out.println("DONE! Check CSV files.");
 	}
 
@@ -388,7 +397,7 @@ public class LuceneLab
 	 * Compute the average precision at standard recall levels
 	 * and generate a CSV file for plotting use
 	 */
-	private static void computePrecision(String analyzerName, int[][] stats, ArrayList<ScoreDoc[]> hitsList) throws IOException
+	private static void computePrecision(String analyzerName, int[][] stats, ArrayList<ScoreDoc[]> hitsList, PrintWriter csvWriter) throws IOException
 	{
 		float[][] precisionRecall = new float[NB_QUERIES][11];
 		float[] precisionRecallAverage = new float[11];
@@ -396,6 +405,7 @@ public class LuceneLab
 		// Loop over queries to compute precision
 		for (int queryIndex = 0; queryIndex < NB_QUERIES; queryIndex++)
 		{
+			// If there is no relevant document, the precision is always 0.
 			if (stats[queryIndex][1] != 0)
 			{
 				int recallIndex = 0;
@@ -428,9 +438,9 @@ public class LuceneLab
 		}
 
 		// Prepare CSV file
-		PrintWriter csvWriter = new PrintWriter(new File(analyzerName + ".csv"));
-		csvWriter.print("");
         StringBuilder stringBuilder = new StringBuilder();
+		stringBuilder.append(analyzerName);
+		stringBuilder.append(",");
 		DecimalFormat format = new DecimalFormat("##.0000");
 		
 		// Loop over recall levels to compute average precision
@@ -452,7 +462,6 @@ public class LuceneLab
 
 		csvWriter.write(stringBuilder.toString());
 		csvWriter.write("\n");
-		csvWriter.close();
 	}
 
 	/**
