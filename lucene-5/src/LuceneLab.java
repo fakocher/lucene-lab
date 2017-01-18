@@ -406,14 +406,14 @@ public class LuceneLab
 		for (int queryIndex = 0; queryIndex < NB_QUERIES; queryIndex++)
 		{
 			// If there is no relevant document, the precision is always 0.
-			if (stats[queryIndex][1] != 0)
+			if (relevantDocs[queryIndex] != null)
 			{
 				int recallIndex = 0;
 				int relevantRetrieved = 0;
 				float recall = 0;
 						
 				// Calculate recall increment
-				double recallIncrement = 1.0 / ((double) stats[queryIndex][1]);
+				double recallIncrement = 1.0 / ((double) relevantDocs[queryIndex].size());
 						
 				// Loop over the retrieved docs
 				for (int hitsIndex = 0; hitsIndex < hitsList.get(queryIndex).length; hitsIndex++)
@@ -424,8 +424,11 @@ public class LuceneLab
 						relevantRetrieved++;
 						recall += recallIncrement;
 						
+						// Calculate precision
 						float precision = ((float) relevantRetrieved) / ((float) (hitsIndex + 1));
 						
+						// Insert precision at relevant recall values
+						// Interpolation is already done
 						while (recallIndex / 10.0 <= recall)
 						{
 							precisionRecall[queryIndex][recallIndex] = precision;
@@ -449,11 +452,14 @@ public class LuceneLab
 		{
 			float precisionSum = 0;
 
+			// Loop over queries to calculate the precision sum
 			for (int queryIndex = 0; queryIndex < NB_QUERIES; queryIndex++)
 			{
 				precisionSum += precisionRecall[queryIndex][recallIndex];
 			}
 			
+			// Compute average by dividing the precision sum
+			// with the total number of queries
 			precisionRecallAverage[recallIndex] = precisionSum / NB_QUERIES;
 
 			stringBuilder.append(format.format(precisionRecallAverage[recallIndex]));
